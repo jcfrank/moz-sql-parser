@@ -45,6 +45,7 @@ else:
 keywords = [
     "and",
     "as",
+    "asc",
     "between",
     "case",
     "collate nocase",
@@ -59,7 +60,9 @@ keywords = [
     "inner join",
     "is",
     "join",
+    "like",
     "limit",
+    "offset",
     "on",
     "or",
     "order by",
@@ -91,6 +94,7 @@ KNOWN_OPS = [
     Literal(">=").setName("gte").setDebugActions(*debug),
     Literal("<=").setName("lte").setDebugActions(*debug),
     IN.setName("in").setDebugActions(*debug),
+    LIKE.setName("like").setDebugActions(*debug),
     IS.setName("is").setDebugActions(*debug),
     Literal("=").setName("eq").setDebugActions(*debug),
     Literal("==").setName("eq").setDebugActions(*debug),
@@ -199,15 +203,18 @@ def to_union_call(instring, tokensStart, retTokens):
             output["orderby"] = tok.get('orderby')
         if tok.get('limit'):
             output["limit"] = tok.get('limit')
+        if tok.get('offset'):
+            output["offset"] = tok.get('offset')
         return output
     else:
-        if not tok.get('orderby') and not tok.get('limit'):
+        if not tok.get('orderby') and not tok.get('limit') and not tok.get('offset'):
             return tok['from']
         else:
             return {
                 "from": {"union": unions},
                 "orderby": tok.get('orderby') if tok.get('orderby') else None,
-                "limit": tok.get('limit') if tok.get('limit') else None
+                "limit": tok.get('limit') if tok.get('limit') else None,
+                "offset": tok.get('offset') if tok.get('offset') else None
             }
 
 
@@ -306,7 +313,7 @@ tableName = (
 
 join = ((CROSSJOIN | INNERJOIN | JOIN)("op") + tableName("join") + Optional(ON + expr("on"))).addParseAction(to_join_call)
 
-sortColumn = expr("value").setName("sort1").setDebugActions(*debug) + Optional(DESC("sort")) | \
+sortColumn = expr("value").setName("sort1").setDebugActions(*debug) + (Optional(ASC("sort")) ^ Optional(DESC("sort"))) | \
              expr("value").setName("sort2").setDebugActions(*debug)
 
 # define SQL tokens
@@ -320,14 +327,16 @@ selectStmt << Group(
                     Optional(WHERE.suppress().setDebugActions(*debug) + expr.setName("where"))("where") +
                     Optional(GROUPBY.suppress().setDebugActions(*debug) + delimitedList(Group(selectColumn))("groupby").setName("groupby")) +
                     Optional(HAVING.suppress().setDebugActions(*debug) + expr("having").setName("having")) +
-                    Optional(LIMIT.suppress().setDebugActions(*debug) + expr("limit"))
+                    Optional(LIMIT.suppress().setDebugActions(*debug) + expr("limit")) +
+                    Optional(OFFSET.suppress().setDebugActions(*debug) + expr("offset"))
                 )
             ),
             delim=UNION
         )
     )("union"))("from") +
     Optional(ORDERBY.suppress().setDebugActions(*debug) + delimitedList(Group(sortColumn))("orderby").setName("orderby")) +
-    Optional(LIMIT.suppress().setDebugActions(*debug) + expr("limit"))
+    Optional(LIMIT.suppress().setDebugActions(*debug) + expr("limit")) +
+    Optional(OFFSET.suppress().setDebugActions(*debug) + expr("offset"))
 ).addParseAction(to_union_call)
 
 
